@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -25,21 +26,21 @@ func Test(w http.ResponseWriter, r *http.Request) {
 
 func TestHandler1(job models.Job) error {
 	fmt.Println("test handler called")
-	fmt.Println("worker registered successfully")
-	return nil
+
+	return errors.New("deliberate test failure")
 }
 
 func TestWorker(w http.ResponseWriter, r *http.Request) {
 
-	fmt.Println("Test worker route hit")
 	q := queue.NewQueue()
+	dlq := queue.NewDLQ()
+	worker := worker.NewWorker(q, dlq)
 
-	worker := worker.NewWorker(q)
-
-	worker.Register("test_2", TestHandler1)
+	worker.Register("test_1", TestHandler1)
 
 	q.Enqueue(models.Job{
-		JobType: "test_2",
+		JobType:     "test_1",
+		MaxAttempts: 3,
 	})
 	fmt.Println("Enqueue job done")
 
