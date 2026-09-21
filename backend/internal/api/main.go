@@ -2,10 +2,12 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/google/uuid"
+	"github.com/vanshsharma3777/WorkerBox/helper"
 	"github.com/vanshsharma3777/WorkerBox/internal/queue"
 	"github.com/vanshsharma3777/WorkerBox/internal/worker"
 	"github.com/vanshsharma3777/WorkerBox/models"
@@ -24,28 +26,35 @@ func Test(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func TestHandler1(job models.Job) error {
-	fmt.Println("test handler called")
-
-	return errors.New("deliberate test failure")
-}
-
 func TestWorker(w http.ResponseWriter, r *http.Request) {
 
 	q := queue.NewQueue()
 	dlq := queue.NewDLQ()
-	worker := worker.NewWorker(q, dlq)
+	concurrency := 3
+	worker := worker.NewWorker(q, dlq, concurrency)
 
-	worker.Register("test_1", TestHandler1)
+	worker.Register("test", helper.TestHandler)
 
-	q.Enqueue(models.Job{
-		JobType:     "test_1",
-		MaxAttempts: 3,
-	})
-	fmt.Println("Enqueue job done")
+	for i := 0; i < 10; i++ {
+		job := models.Job{
+			ID:          uuid.New().String(),
+			JobType:     "test",
+			Attempts:    0,
+			MaxAttempts: 3,
+		}
+
+		q.Enqueue(job)
+	}
 
 	worker.Start()
-	fmt.Println("Starting worker")
+
+	time.Sleep(1 * time.Second)
+
+	fmt.Println(">>> SHUTDOWN REQUESTED")
+
+	worker.Shutdown()
+
+	fmt.Println(">>> SHUTDOWN COMPLETE")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"msg": "Worker started successfully",
 	})

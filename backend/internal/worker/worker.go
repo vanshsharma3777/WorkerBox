@@ -2,6 +2,7 @@ package worker
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/vanshsharma3777/WorkerBox/helper"
@@ -10,31 +11,41 @@ import (
 )
 
 type Worker struct {
-	handlers map[string]func(models.Job) error
-	queue    *queue.Queue
-	dlq      *queue.DLQ
+	Handlers    map[string]func(models.Job) error
+	Queue       *queue.Queue
+	Dlq         *queue.DLQ
+	Concurrency int
+
+	wg sync.WaitGroup
+
+	shutdowmOnce sync.Once
 }
 
-func NewWorker(q *queue.Queue, dlq *queue.DLQ) *Worker {
-	return &Worker{
-		handlers: make(map[string]func(models.Job) error),
-		queue:    q,
-		dlq:      dlq,
+func NewWorker(q *queue.Queue, dlq *queue.DLQ, concurrency int) *Worker {
+	if concurrency <= 0 {
+		concurrency = 1
 	}
+	w := &Worker{
+		Handlers:    make(map[string]func(models.Job) error),
+		Queue:       q,
+		Dlq:         dlq,
+		Concurrency: concurrency,
+	}
+	return w
 }
 
 func (w *Worker) Register(jobType string, handler func(models.Job) error) {
-	w.handlers[jobType] = handler
-	fmt.Println("Handler registered for job type:", jobType)
+	w.Handlers[jobType] = handler
 }
 
-func (w *Worker) Start() {
+func (w *Worker) proccessJobs(jobNumber int) {
 	for {
-		job := w.queue.Dequeue()
-
-		fmt.Println(job.Attempts+1, " Attempt...")
-
-		handler, ok := w.handlers[job.JobType]
+		job, ok := w.Queue.Dequeue()
+		if !ok {
+			fmt.Println("Shutdown the processess, all jobs exit")
+			return
+		}
+		handler, ok := w.Handlers[job.JobType]
 
 		if !ok {
 			fmt.Println("No handler registered for job type:", job.JobType)
@@ -52,7 +63,7 @@ func (w *Worker) Start() {
 			if job.Attempts >= job.MaxAttempts {
 				fmt.Println("3 Attempts reached... Failed to process the Job")
 
-				w.dlq.Add(job)
+				w.Dlq.Add(job)
 
 				continue
 			}
@@ -61,13 +72,29 @@ func (w *Worker) Start() {
 
 			time.Sleep(delay)
 
-			fmt.Println()
-
-			w.queue.Enqueue(job)
+			w.Queue.Enqueue(job)
 			continue
 		}
-
-		fmt.Println("Job completed:", job.JobType)
-
 	}
+}
+
+func (w *Worker) Start() {
+	for i := 0; i < w.Concurrency; i++ {
+		w.wg.Add(1)
+
+		go func(workerNo int) {
+			defer w.wg.Done()
+			w.proccessJobs(workerNo)
+
+		}(i + 1)
+	}
+}
+
+func (w *Worker) Shutdown() {
+	w.shutdowmOnce.Do(func() {
+		w.Queue.Shutdown()
+	})
+
+	w.wg.Wait()
+
 }
