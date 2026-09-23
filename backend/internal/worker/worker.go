@@ -7,6 +7,7 @@ import (
 
 	"github.com/vanshsharma3777/WorkerBox/helper"
 	"github.com/vanshsharma3777/WorkerBox/internal/queue"
+	"github.com/vanshsharma3777/WorkerBox/internal/repository"
 	"github.com/vanshsharma3777/WorkerBox/models"
 )
 
@@ -15,13 +16,14 @@ type Worker struct {
 	Queue       *queue.Queue
 	Dlq         *queue.DLQ
 	Concurrency int
+	Repo        *repository.JobRepo
 
 	wg sync.WaitGroup
 
 	shutdowmOnce sync.Once
 }
 
-func NewWorker(q *queue.Queue, dlq *queue.DLQ, concurrency int) *Worker {
+func NewWorker(q *queue.Queue, dlq *queue.DLQ, concurrency int, repo *repository.JobRepo) *Worker {
 	if concurrency <= 0 {
 		concurrency = 1
 	}
@@ -30,6 +32,7 @@ func NewWorker(q *queue.Queue, dlq *queue.DLQ, concurrency int) *Worker {
 		Queue:       q,
 		Dlq:         dlq,
 		Concurrency: concurrency,
+		Repo:        repo,
 	}
 	return w
 }
@@ -45,10 +48,23 @@ func (w *Worker) proccessJobs(jobNumber int) {
 			fmt.Println("Shutdown the processess, all jobs exit")
 			return
 		}
+
+		error := w.Repo.UpdateJobStatus(
+			job.ID,
+			models.StatusProcessing,
+		)
 		handler, ok := w.Handlers[job.JobType]
 
+		if error != nil {
+			fmt.Println("Failed to update job status:", error)
+			continue
+		}
 		if !ok {
 			fmt.Println("No handler registered for job type:", job.JobType)
+			w.Repo.UpdateJobStatus(
+				job.ID,
+				models.StatusFailed,
+			)
 			continue
 		}
 
@@ -74,7 +90,13 @@ func (w *Worker) proccessJobs(jobNumber int) {
 
 			w.Queue.Enqueue(job)
 			continue
+		} else {
+			w.Repo.UpdateJobStatus(
+				job.ID,
+				models.StatusCompleted,
+			)
 		}
+
 	}
 }
 
@@ -97,4 +119,20 @@ func (w *Worker) Shutdown() {
 
 	w.wg.Wait()
 
+}
+
+func (w *Worker) RecoverJobs() error {
+	jobs, err := w.Repo.GetRecoverableJobs()
+
+	if err != nil {
+		return err
+	}
+
+	for _, job := range jobs {
+		if err := w.Queue.Enqueue(job); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

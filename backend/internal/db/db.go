@@ -9,6 +9,7 @@ import (
 	"github.com/vanshsharma3777/WorkerBox/models"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var DB *gorm.DB
@@ -19,7 +20,9 @@ func Init(dsn string) error {
 
 	// Retry loop — useful for Neon cold starts
 	for i := 0; i < 10; i++ {
-		DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+		DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+			Logger: logger.Default.LogMode(logger.Error),
+		})
 		if err == nil {
 			sqlDB, err = DB.DB()
 			if err == nil {
