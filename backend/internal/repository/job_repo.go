@@ -119,3 +119,32 @@ func (r *JobRepo) GetRecoverableJobs() ([]models.Job, error) {
 
 	return jobs, nil
 }
+
+func (r *JobRepo) GetFailedJobs() ([]models.Job, error) {
+	var jobs []models.Job
+
+	err := r.DB.
+		Where("status = ?", models.StatusFailed).
+		Find(&jobs).Error
+
+	return jobs, err
+}
+
+func (r *JobRepo) RetryJob(id string) (models.Job, error) {
+
+	var job models.Job
+
+	if err := r.DB.First(&job, "id = ?", id).Error; err != nil {
+		return job, err
+	}
+
+	job.Status = models.StatusQueued
+	job.Attempts = 0
+	job.LastError = ""
+
+	if err := r.DB.Save(&job).Error; err != nil {
+		return job, err
+	}
+
+	return job, nil
+}

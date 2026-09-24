@@ -32,7 +32,7 @@ func (a *API) TestWorker(w http.ResponseWriter, r *http.Request) {
 
 		job := models.Job{
 			ID:          uuid.New().String(),
-			JobType:     "email",
+			JobType:     "test-2",
 			Attempts:    0,
 			MaxAttempts: 3,
 			Status:      "queued",
@@ -51,5 +51,39 @@ func (a *API) TestWorker(w http.ResponseWriter, r *http.Request) {
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"msg": "Jobs added successfully",
+	})
+}
+
+func (a *API) GetDLQJobs(w http.ResponseWriter, r *http.Request) {
+
+	jobs, err := a.Repo.GetFailedJobs()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	json.NewEncoder(w).Encode(jobs)
+}
+
+func (a *API) RetryDLQJob(w http.ResponseWriter, r *http.Request) {
+
+	id := r.PathValue("id")
+
+	job, err := a.Repo.RetryJob(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := a.AppWorker.Queue.Enqueue(job); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"msg": "Job retried successfully",
+		"job": job,
 	})
 }

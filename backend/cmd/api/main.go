@@ -45,7 +45,7 @@ func main() {
 
 	fmt.Println("Number of active workers = ", workersCount)
 
-	appWorker.Register("email", func(job models.Job) error {
+	appWorker.Register("test-2", func(job models.Job) error {
 		fmt.Println("Executing:", job.ID)
 
 		time.Sleep(2 * time.Second)
@@ -71,6 +71,8 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /test-worker", apiServer.TestWorker)
+	mux.HandleFunc("GET /get-dead-jobs", apiServer.GetDLQJobs)
+	mux.HandleFunc("POST /dlq/{id}/retry", apiServer.RetryDLQJob)
 	http.ListenAndServe(":8080", mux)
 
 }

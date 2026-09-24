@@ -26,10 +26,3 @@ func (d *DLQ) Add(job models.Job) {
 	fmt.Println("Job added in DLQ JOBTYPE", job.JobType)
 	fmt.Println("Last Error: ", job.LastError)
 }
-
-func (d *DLQ) List() []models.Job {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	return append([]models.Job(nil), d.jobs...)
-}

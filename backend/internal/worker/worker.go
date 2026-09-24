@@ -53,12 +53,13 @@ func (w *Worker) proccessJobs(jobNumber int) {
 			job.ID,
 			models.StatusProcessing,
 		)
-		handler, ok := w.Handlers[job.JobType]
 
 		if error != nil {
 			fmt.Println("Failed to update job status:", error)
 			continue
 		}
+
+		handler, ok := w.Handlers[job.JobType]
 		if !ok {
 			fmt.Println("No handler registered for job type:", job.JobType)
 			w.Repo.UpdateJobStatus(
@@ -80,6 +81,10 @@ func (w *Worker) proccessJobs(jobNumber int) {
 				fmt.Println("3 Attempts reached... Failed to process the Job")
 
 				w.Dlq.Add(job)
+				err := w.Repo.UpdateJobStatus(job.ID, models.StatusFailed)
+				if err != nil {
+					fmt.Println("failed to update job status:", err)
+				}
 
 				continue
 			}
